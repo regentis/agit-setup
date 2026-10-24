@@ -220,7 +220,7 @@ shell_dir () {
 	case "$d" in
 	'') echo "$cwd" ;;
 	'~') echo "$HOME" ;;
-	'~/'*) echo "$HOME/${d#'~/'}" ;;
+	\~/*) echo "$HOME/${d#\~/}" ;;
 	/*) echo "$d" ;;
 	*) echo "$cwd/$d" ;;
 	esac
