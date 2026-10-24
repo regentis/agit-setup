@@ -20,7 +20,8 @@
 #   session-end    forget the session
 #   pre-edit       git stamp begin -- <file>, before the agent writes it
 #   post-edit      git stamp end -- <file>, after it did
-#   pre-shell      git stamp begin, whole tree, before a shell command
+#   pre-shell      git stamp begin, whole tree, before a shell command,
+#                  in the worktree it works in (see shell_dir)
 #   post-shell     git stamp end, whole tree, after it
 #
 # The reasoning of a commit is the agent's own: the context asks it to
@@ -201,6 +202,36 @@ moves_head () {
 	esac
 	printf '%s\n' "$cmd" |
 	grep -Eq '(^|[^[:alnum:]_./-])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+(checkout|switch|reset|restore|stash|pull|merge|rebase|cherry-pick|revert|am|commit|worktree)([[:space:]]|$)'
+}
+
+# The directory that the shell command $cmd works in: the one named by
+# a leading "cd <dir> &&" or "cd <dir>;", else by "git -C <dir>", else
+# $cwd.  Only a word without white space is read, with the quotes
+# around it, if any, removed.  A command that works in two worktrees
+# is stamped in the first one found.
+shell_dir () {
+	d=$(printf '%s\n' "$cmd" | sed -n \
+		-e 's/^[[:space:]]*cd[[:space:]]\{1,\}\([^[:space:];&|]\{1,\}\)[[:space:]]*\([;&].*\)\{0,1\}$/\1/p' \
+		-e 't' \
+		-e 's/.*git[[:space:]]\{1,\}-C[[:space:]]\{1,\}\([^[:space:];&|]\{1,\}\).*/\1/p' |
+		head -n 1)
+	d=${d#[\"\']}
+	d=${d%[\"\']}
+	case "$d" in
+	'') echo "$cwd" ;;
+	'~') echo "$HOME" ;;
+	'~/'*) echo "$HOME/${d#'~/'}" ;;
+	/*) echo "$d" ;;
+	*) echo "$cwd/$d" ;;
+	esac
+}
+
+# Set $top for the shell command $cmd: the worktree of shell_dir, else
+# of $cwd.  An agent whose shell keeps the directory of a "cd" may
+# already give it as the cwd of the post-shell hook, where a relative
+# "cd" then names a directory that does not exist.
+shell_worktree () {
+	worktree "$(shell_dir)" || worktree "$cwd"
 }
 
 # Claude Code: hook input fields to variables.
@@ -489,13 +520,13 @@ main () {
 		read_conf
 		test "$opt_shell" = true || exit 0
 		moves_head && exit 0
-		worktree "$cwd" || exit 0
+		shell_worktree || exit 0
 		begin ;;
 	post-shell)
 		read_conf
 		test "$opt_shell" = true || exit 0
 		moves_head && exit 0
-		worktree "$cwd" || exit 0
+		shell_worktree || exit 0
 		open_interval || exit 0
 		stamp -C "$top" stamp end --session "$sid" ;;
 	pre-commit)

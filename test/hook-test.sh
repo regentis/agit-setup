@@ -263,6 +263,45 @@ test "$(marks "$repo" shell2.txt)" = "1 HUMAN" || fail "shell2.txt without shell
 "$GIT" config --file "$AGIT_HOME/setup.conf" hook.shell true
 ok "shell stamps follow hook.shell"
 
+echo "== shell commands that work in another directory"
+new_repo other
+new_repo home/proj
+mkdir -p "$tmp/not-a-repo"
+# shell_in <expected worktree> <pre-shell cwd> <post-shell cwd> <command>:
+# stamp around the command, which writes a line to <worktree>/made.txt,
+# and check that the stamps are there and only there.
+shell_in () {
+	want=$1
+	hook pre-shell "$2" "$4"
+	echo "made by $4" >>"$want/made.txt"
+	hook post-shell "$3" "$4"
+	for r in "$repo" "$tmp/other" "$tmp/home/proj"
+	do
+		got=$(journal "$r" | awk '{ print $1 }' | tr '\n' ' ')
+		if test "$r" = "$want"
+		then
+			test "$got" = "begin end " || fail "$4: journal of $r: $(journal "$r")"
+		else
+			test -z "$got" || fail "$4: stamps in $r: $(journal "$r")"
+		fi
+	done
+	"$GIT" -C "$want" add made.txt
+	"$GIT" -C "$want" commit -q -m made
+	test "$(marks "$want" made.txt | tail -n 1 | cut -d' ' -f2)" = AI ||
+	fail "$4: made.txt: $(marks "$want" made.txt)"
+}
+shell_in "$tmp/other" "$repo" "$repo" "cd $tmp/other && echo x >>made.txt"
+shell_in "$tmp/other" "$tmp" "$tmp" "cd other; echo x >>made.txt"
+shell_in "$tmp/other" "$repo" "$repo" "cd '$tmp/other' && echo x >>made.txt"
+shell_in "$tmp/other" "$repo" "$repo" "git -C \"$tmp/other\" apply x.patch"
+shell_in "$tmp/home/proj" "$repo" "$repo" "cd ~/proj && echo x >>made.txt"
+# The shell kept the directory of the relative cd.
+shell_in "$tmp/other" "$tmp" "$tmp/other" "cd other && echo x >>made.txt"
+# No cd, or a cd into a directory outside a worktree: $cwd.
+shell_in "$repo" "$repo" "$repo" "echo x >>made.txt"
+shell_in "$repo" "$repo" "$repo" "cd $tmp/not-a-repo && echo x >>$repo/made.txt"
+ok "shell commands in another directory"
+
 echo "== no end without a begin"
 echo "human change" >>"$repo/hello.txt"
 hook post-shell "$repo" "true"
