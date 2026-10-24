@@ -11,8 +11,8 @@
 # CLI).  Each agent has a function input_<agent> that maps its input to
 # the variables tool, sid, cwd, path, cmd, transcript and model, and,
 # for the agents that take a session context, context_<agent>, which
-# prints it in their form; summary_<agent> and model_<agent>, for
-# agents whose transcript format is documented, read it.
+# prints it in their form; model_<agent>, for agents whose transcript
+# format is documented, reads the model from it.
 #
 # Events:
 #
@@ -22,9 +22,12 @@
 #   post-edit      git stamp end -- <file>, after it did
 #   pre-shell      git stamp begin, whole tree, before a shell command
 #   post-shell     git stamp end, whole tree, after it
-#   pre-commit     before a shell command that runs git commit, record
-#                  a summary from the transcript if the session has not
-#                  recorded one
+#
+# The reasoning of a commit is the agent's own: the context asks it to
+# record it with git stamp reason, and git commit warns when it did
+# not.  The pre-commit event of earlier versions, which wrote one from
+# the transcript, does nothing: the hooks of an older plugin may still
+# run it.
 #
 # The script never fails and never blocks the agent: it exits 0, prints
 # nothing but the session context, and logs its errors to
@@ -156,7 +159,6 @@ file_worktree () {
 # Read the options of agit-setup.
 read_conf () {
 	opt_shell=true
-	opt_reason=true
 	test -f "$conf" || return 0
 	cfg=$("$GIT" config --file "$conf" --type=bool --get-regexp '^hook\.' 2>/dev/null) ||
 	return 0
@@ -164,7 +166,6 @@ read_conf () {
 	do
 		case "$key" in
 		hook.shell) opt_shell=$value ;;
-		hook.reason) opt_reason=$value ;;
 		esac
 	done <<EOF
 $cfg
@@ -190,17 +191,6 @@ EOF
 	test "$last" = begin
 }
 
-# Succeed if the shell command $cmd runs git commit, possibly after
-# "cd <dir> &&" or with "git -C <dir>".
-runs_commit () {
-	case "$cmd" in
-	*git*) ;;
-	*) return 1 ;;
-	esac
-	printf '%s\n' "$cmd" |
-	grep -Eq '(^|[^[:alnum:]_./-])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)'
-}
-
 # Succeed if the shell command $cmd runs a git command that moves HEAD
 # or rewrites the working tree.  Whole-tree stamps around it would
 # attribute to the session the changes it checks out.
@@ -211,56 +201,6 @@ moves_head () {
 	esac
 	printf '%s\n' "$cmd" |
 	grep -Eq '(^|[^[:alnum:]_./-])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+(checkout|switch|reset|restore|stash|pull|merge|rebase|cherry-pick|revert|am|commit|worktree)([[:space:]]|$)'
-}
-
-# The directory that the commit in $cmd runs in: the one named by
-# "git -C <dir>" or by a leading "cd <dir> &&", else $cwd.
-commit_dir () {
-	d=$(printf '%s\n' "$cmd" | sed -n \
-		-e 's/.*git[[:space:]]\{1,\}-C[[:space:]]\{1,\}\([^[:space:];&|]\{1,\}\).*/\1/p' \
-		-e 't' \
-		-e 's/^[[:space:]]*cd[[:space:]]\{1,\}\([^[:space:];&|]\{1,\}\)[[:space:]]*&&.*/\1/p' |
-		head -n 1)
-	d=${d#[\"\']}
-	d=${d%[\"\']}
-	case "$d" in
-	'') echo "$cwd" ;;
-	/*) echo "$d" ;;
-	*) echo "$cwd/$d" ;;
-	esac
-}
-
-# The summary of what the session did since the last prompt of the
-# user, from the transcript $1: the prompt and the text the agent wrote
-# after it.
-# shellcheck disable=SC2317 # called as summary_$agent
-summary_claude () {
-	jq -nRr '
-	def text:
-		if type == "string" then .
-		elif type == "array" then
-			[.[] | select(type == "object" and .type == "text") | .text] | join("\n")
-		else "" end;
-	def prompt:
-		if .type == "user" and (.isMeta | not) and (.isSidechain | not)
-		   and (.isCompactSummary | not)
-		then (.message.content | text) else "" end;
-	reduce (inputs | fromjson? | select(type == "object")) as $e
-		({p: "", a: []};
-		 ($e | prompt) as $t
-		 | if $t != "" and ($t | startswith("<") | not) then {p: $t, a: []}
-		   elif $e.type == "assistant" and ($e.isSidechain | not) then
-			.a += [$e.message.content | text | select(. != "")]
-		   else . end)
-	| (.p | if length > 1000 then .[0:1000] + " [...]" else . end) as $p
-	| (.a | join("\n\n")) as $n
-	| (3900 - ($p | length)) as $room
-	| ($n | if length > $room then "[...] " + .[length - $room:] else . end) as $n
-	| if $p == "" and $n == "" then empty
-	  elif $p == "" then $n
-	  elif $n == "" then "Request: " + $p
-	  else "Request: " + $p + "\n\n" + $n end
-	' <"$1" 2>/dev/null
 }
 
 # Claude Code: hook input fields to variables.
@@ -281,8 +221,7 @@ input_claude () {
 # Codex: hook input fields to variables
 # (https://developers.openai.com/codex/hooks).  The patch of apply_patch
 # and the command of Bash are both tool_input.command.  The transcript
-# is not a stable interface, says the documentation: it is not read,
-# and Codex has no pre-commit fallback.
+# is not a stable interface, says the documentation: it is not read.
 # shellcheck disable=SC2317 # called as input_$agent
 input_codex () {
 	tool=codex
@@ -406,15 +345,14 @@ session_start () {
 	fi
 
 	worktree "$cwd" || exit 0
-	"context_$agent" "This machine's git is agit, a Git that records, for \
-each commit, which lines an AI wrote and why. Your edits to files are \
-recorded automatically by hooks, including those made by shell commands.
-Before each \`git commit\` that contains your changes, record why you \
-made them: run \`git stamp reason --session $sid --summary -\` with a \
-few sentences on stdin saying what changed and why. Do not pass \
-\`--session\` to \`git commit\`: the recorded edits already link the \
-commit to this session. Never run \`git stamp begin\`, \`git stamp end\` \
-or \`git stamp edit\` yourself."
+	"context_$agent" "This machine's git is agit: each commit records which \
+lines an AI wrote and why. Hooks record your edits. Before each \
+\`git commit\` or \`git commit --amend\`, run \
+\`git stamp reason --session $sid --summary -\` as its own command, with \
+a few sentences on stdin saying why you made the changes. Edit files and \
+commit in separate commands; edits made in the commit's own command are \
+not recorded. Do not pass \`--session\` to \`git commit\`, and never \
+run \`git stamp begin\`, \`end\` or \`edit\`."
 }
 
 # The model of the session: the one in the hook input, else the one
@@ -517,33 +455,6 @@ begin () {
 	fi
 }
 
-pre_commit () {
-	runs_commit || return 0
-	read_conf
-	test "$opt_reason" = true || return 0
-	worktree "$(commit_dir)" || return 0
-	entries=$("$GIT" -C "$top" stamp list --session "$sid" 2>&1) || {
-		case "$entries" in
-		*"'stamp' is not a git command"*) ;;
-		*) log "git stamp list: $entries" ;;
-		esac
-		return 0
-	}
-	# Nothing to explain if the session changed nothing here, and an
-	# explanation it gave itself is never replaced.
-	case "$nl$entries" in
-	*"${nl}reason "*) return 0 ;;
-	*"${nl}begin "*) ;;
-	*) return 0 ;;
-	esac
-	test -n "$transcript" && test -r "$transcript" &&
-	command -v "summary_$agent" >/dev/null || return 0
-	summary=$("summary_$agent" "$transcript")
-	test -n "$summary" || return 0
-	printf '%s\n' "$summary" |
-	stamp -C "$top" stamp reason --session "$sid" --summary -
-}
-
 main () {
 	if ! command -v jq >/dev/null 2>&1
 	then
@@ -588,7 +499,7 @@ main () {
 		open_interval || exit 0
 		stamp -C "$top" stamp end --session "$sid" ;;
 	pre-commit)
-		pre_commit ;;
+		;;
 	*)
 		log "unknown event" ;;
 	esac

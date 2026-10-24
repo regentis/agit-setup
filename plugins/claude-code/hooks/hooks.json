@@ -40,11 +40,6 @@
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/agit-hook\" claude pre-shell",
             "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/agit-hook\" claude pre-commit",
-            "timeout": 30
           }
         ]
       }

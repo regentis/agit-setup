@@ -156,7 +156,8 @@ jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' "$tmp/out" >/dev/nul
 fail "session-start printed no SessionStart JSON: $(cat "$tmp/out")"
 ctx=$(jq -r .hookSpecificOutput.additionalContext "$tmp/out")
 case "$ctx" in
-*"git stamp reason --session $sid --summary -"*) ok "context" ;;
+*"Before each \`git commit\` or \`git commit --amend\`, run \`git stamp reason --session $sid --summary -\` as its own command"*"Edit files and commit in separate commands"*)
+	ok "context" ;;
 *) fail "unexpected context: $ctx" ;;
 esac
 grep -qx "export AGIT_SESSION=$sid" "$CLAUDE_ENV_FILE" || fail "AGIT_SESSION not in CLAUDE_ENV_FILE"
@@ -210,10 +211,14 @@ test "$(journal "$repo" | grep -c "^end .* $sid ")" = 3 || fail "expected 3 end 
 # A line changed outside the hooks.
 printf 'one\nTWO by the agent\nthree by a human\n' >"$repo/hello.txt"
 
-echo "== pre-commit without a reason from the agent"
+echo "== commit"
 hook pre-shell "$repo" "git add -A && git commit -m 'Add a greeting'"
+# The pre-commit event of earlier versions does nothing, with their
+# hook.reason too: no reason from the transcript, no log.
+"$GIT" config --file "$AGIT_HOME/setup.conf" hook.reason true
 hook pre-commit "$repo" "git add -A && git commit -m 'Add a greeting'"
-journal "$repo" | grep -q "^reason .* $sid " || fail "no reason recorded by pre-commit"
+journal "$repo" | grep -q "^reason " && fail "pre-commit recorded a reason: $(journal "$repo")"
+test -e "$AGIT_HOME/log/hook.log" && fail "pre-commit logged: $(cat "$AGIT_HOME/log/hook.log")"
 "$GIT" -C "$repo" add -A
 "$GIT" -C "$repo" commit -q -m "Add a greeting"
 hook post-shell "$repo" "git add -A && git commit -m 'Add a greeting'"
@@ -224,33 +229,21 @@ test "$(marks "$repo" hello.txt)" = "2 AI
 test "$(marks "$repo" sub/dir/new.txt)" = "1 AI" || fail "new.txt: $(marks "$repo" sub/dir/new.txt)"
 test "$(marks "$repo" 'nb[1].ipynb')" = "1 AI" || fail "nb[1].ipynb: $(marks "$repo" 'nb[1].ipynb')"
 "$GIT" -C "$repo" provenance show HEAD | grep -q "session=$sid" || fail "no actor for $sid"
-summary=$("$GIT" -C "$repo" log -1 --format='%(provenance:summary)')
-expected="Request: Add a greeting to hello.txt and a list of names.
+test -z "$("$GIT" -C "$repo" log -1 --format='%(provenance:summary)')" ||
+fail "a summary without a reason from the agent"
+"$GIT" config --file "$AGIT_HOME/setup.conf" --unset hook.reason
+ok "commit, and pre-commit does nothing"
 
-I will add the greeting first.
-
-Added the greeting and the names file."
-test "$summary" = "$expected" || fail "summary from the transcript: $summary"
-ok "summary from the transcript"
-
-echo "== pre-commit with a reason from the agent"
+echo "== the agent's reason"
 hook pre-edit "$repo" "$repo/hello.txt"
 echo four >>"$repo/hello.txt"
 hook post-edit "$repo" "$repo/hello.txt"
 echo "The agent's own summary." |
 "$GIT" -C "$repo" stamp reason --session "$sid" --summary -
-hook pre-commit "$tmp" "cd $repo && git commit -am four"
-test "$(journal "$repo" | grep -c "^reason ")" = 1 || fail "pre-commit replaced the agent's reason"
 "$GIT" -C "$repo" commit -q -am four
 test "$("$GIT" -C "$repo" log -1 --format='%(provenance:summary)')" = "The agent's own summary." ||
 fail "summary is not the agent's"
-ok "the agent's summary is kept"
-
-echo "== pre-commit does nothing for other commands or sessions without stamps"
-hook pre-commit "$repo" "git status && echo commit"
-hook pre-commit "$repo" "git commit -m nothing"
-test -z "$(journal "$repo")" || fail "pre-commit recorded without stamps: $(journal "$repo")"
-ok "no reason without stamps"
+ok "the agent's summary"
 
 echo "== shell commands"
 hook pre-shell "$repo" "echo made by a command >shell.txt"
@@ -283,24 +276,6 @@ hook pre-shell "$repo" "git checkout -b topic"
 hook post-shell "$repo" "git checkout -b topic"
 test -z "$(journal "$repo")" || fail "stamps around git checkout: $(journal "$repo")"
 ok "git checkout not stamped"
-
-echo "== pre-commit with hook.reason false"
-hook pre-edit "$repo" "$repo/hello.txt"
-echo five >>"$repo/hello.txt"
-hook post-edit "$repo" "$repo/hello.txt"
-"$GIT" config --file "$AGIT_HOME/setup.conf" hook.reason false
-hook pre-commit "$repo" "git commit -am five"
-journal "$repo" | grep -q "^reason " && fail "reason recorded with hook.reason false"
-"$GIT" config --file "$AGIT_HOME/setup.conf" hook.reason true
-# hook.transcript, an option of earlier versions, is ignored.
-"$GIT" config --file "$AGIT_HOME/setup.conf" hook.transcript true
-hook pre-commit "$repo" "git -C $repo commit -am five"
-journal "$repo" | grep -q "^reason .* $sid " || fail "no reason with git -C"
-test -z "$(journal "$repo" | awk '$1 == "reason" { print $5 }')" ||
-fail "a transcript was recorded: $(journal "$repo")"
-"$GIT" -C "$repo" commit -q -am five
-"$GIT" config --file "$AGIT_HOME/setup.conf" --unset hook.transcript
-ok "hook.reason, and no transcript"
 
 echo "== nothing happens outside a repository"
 mkdir -p "$tmp/outside"

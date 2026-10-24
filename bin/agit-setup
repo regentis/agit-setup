@@ -20,7 +20,7 @@ usage () {
 	cat <<EOF
 usage: agit-setup
    or: agit-setup add <agent> [--scope user|project|local] [--no-shell]
-                              [--no-reason] [--yes]
+                              [--yes]
    or: agit-setup remove <agent>
    or: agit-setup status [<agent>]
 
@@ -40,9 +40,6 @@ its editor and its agent command), gemini (Gemini CLI).
                          for you only (Claude Code)
     --no-shell           do not record the edits that the agent makes
                          through shell commands
-    --no-reason          do not record a summary from the transcript
-                         before a commit when the agent recorded none
-                         (Claude Code)
     -y, --yes            do not ask for confirmation
 EOF
 }
@@ -204,20 +201,13 @@ summary () {
 		say "  $(agent_name "$a"): $(scope_text "$(scope_of "$a")")"
 	done
 	say "  edits made by shell commands: $(yes_no "$shell")"
-	case " $selected " in
-	*" claude-code "*)
-		say "  summary before commits: $(yes_no "$reason")" ;;
-	esac
 	say ""
 }
 
 write_options () {
 	mkdir -p "$home" || die "cannot create $home"
-	for kv in shell="$shell" reason="$reason"
-	do
-		"$GIT" config --file "$conf" "hook.${kv%%=*}" "${kv#*=}" ||
-		die "cannot write $conf"
-	done
+	"$GIT" config --file "$conf" hook.shell "$shell" ||
+	die "cannot write $conf"
 }
 
 # Record the installation $2 of the agent $1 in setup.conf.
@@ -813,7 +803,6 @@ cmd_add () {
 	agent=
 	scope=user
 	shell=true
-	reason=true
 	yes=
 	while test $# -gt 0
 	do
@@ -825,8 +814,6 @@ cmd_add () {
 			scope=${1#*=} ;;
 		--no-shell)
 			shell=false ;;
-		--no-reason)
-			reason=false ;;
 		-y|--yes)
 			yes=1 ;;
 		-*)
@@ -915,8 +902,7 @@ cmd_status () {
 	fi
 	say "agit-setup:   $root${v:+ (plugin $v)}"
 	say "hooks run:    $(hook_git)"
-	say "options:      edits made by shell commands: $(yes_no "$(option hook.shell true)")," \
-		"summary before commits: $(yes_no "$(option hook.reason true)")"
+	say "options:      edits made by shell commands: $(yes_no "$(option hook.shell true)")"
 	for a in $agents
 	do
 		test -z "$only" || test "$a" = "$only" || continue
@@ -1032,13 +1018,7 @@ interactive () {
 
 	say ""
 	shell=true
-	reason=true
 	ask "Record the edits the agents make through shell commands?" y || shell=false
-	case " $selected " in
-	*" claude-code "*)
-		ask "Record a summary of the session before a commit when Claude Code records none?" y ||
-		reason=false ;;
-	esac
 
 	for a in $selected
 	do
