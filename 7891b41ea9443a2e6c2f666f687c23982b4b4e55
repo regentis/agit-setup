@@ -1,0 +1,7 @@
+version 1
+commit 7891b41ea9443a2e6c2f666f687c23982b4b4e55
+capture observed git/2.56.0.agit.2
+actor dcec3081-94b4-49c4-a6c2-f93e14060337 ai model=claude-opus-5-5 tool=claude-code session=dcec3081-94b4-49c4-a6c2-f93e14060337 source=observed
+file bin/agit-hook
++ 223 AI dcec3081-94b4-49c4-a6c2-f93e14060337 add8a0f17b623cd3281c53981117a2c00ea094ec
+- 223 AI dcec3081-94b4-49c4-a6c2-f93e14060337 168982d99687815e0bd22c02128e549bb1117430
