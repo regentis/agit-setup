@@ -156,7 +156,8 @@ jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' "$tmp/out" >/dev/nul
 fail "session-start printed no SessionStart JSON: $(cat "$tmp/out")"
 ctx=$(jq -r .hookSpecificOutput.additionalContext "$tmp/out")
 case "$ctx" in
-*"git stamp reason --session $sid --summary -"*) ok "context" ;;
+*"Before each \`git commit\` or \`git commit --amend\`, run \`git stamp reason --session $sid --summary -\` as its own command"*"Edit files and commit in separate commands"*)
+	ok "context" ;;
 *) fail "unexpected context: $ctx" ;;
 esac
 grep -qx "export AGIT_SESSION=$sid" "$CLAUDE_ENV_FILE" || fail "AGIT_SESSION not in CLAUDE_ENV_FILE"

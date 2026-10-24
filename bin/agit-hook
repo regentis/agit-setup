@@ -345,15 +345,14 @@ session_start () {
 	fi
 
 	worktree "$cwd" || exit 0
-	"context_$agent" "This machine's git is agit, a Git that records, for \
-each commit, which lines an AI wrote and why. Your edits to files are \
-recorded automatically by hooks, including those made by shell commands.
-Before each \`git commit\` that contains your changes, record why you \
-made them: run \`git stamp reason --session $sid --summary -\` with a \
-few sentences on stdin saying what changed and why. Do not pass \
-\`--session\` to \`git commit\`: the recorded edits already link the \
-commit to this session. Never run \`git stamp begin\`, \`git stamp end\` \
-or \`git stamp edit\` yourself."
+	"context_$agent" "This machine's git is agit: each commit records which \
+lines an AI wrote and why. Hooks record your edits. Before each \
+\`git commit\` or \`git commit --amend\`, run \
+\`git stamp reason --session $sid --summary -\` as its own command, with \
+a few sentences on stdin saying why you made the changes. Edit files and \
+commit in separate commands; edits made in the commit's own command are \
+not recorded. Do not pass \`--session\` to \`git commit\`, and never \
+run \`git stamp begin\`, \`end\` or \`edit\`."
 }
 
 # The model of the session: the one in the hook input, else the one
