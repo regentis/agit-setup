@@ -125,21 +125,23 @@ before and after each shell        git stamp begin / end on the whole tree,
 command                            so files written by commands count as
                                    the agent's
 at the start of a session          tell the agent to record why it made
-                                   its changes, with git stamp reason
-before a git commit                if the agent recorded no reason, record
-                                   a summary of its last turn as the
-                                   commit's reasoning
+                                   its changes, with git stamp reason,
+                                   before each commit
 ```
+
+The reasoning of a commit is what the agent records; the hooks do not
+write one for it. When a commit has lines an AI wrote and no
+reasoning, `git commit` warns and says how to add it.
 
 What each agent records:
 
 ```
-                   edits      shell      model   session    summary before
-                              commands           context    a commit
-Claude Code        yes        yes        yes     yes        yes
-Codex CLI          yes        yes        yes     yes        no
-Cursor             yes        yes        yes     yes        no
-Gemini CLI         yes        yes        no      yes        no
+                   edits      shell      model   session
+                              commands           context
+Claude Code        yes        yes        yes     yes
+Codex CLI          yes        yes        yes     yes
+Cursor             yes        yes        yes     yes
+Gemini CLI         yes        yes        no      yes
 ```
 
 - Cursor needs version 3. The hooks stamp around its agent's `Write`,
@@ -147,24 +149,21 @@ Gemini CLI         yes        yes        no      yes        no
   inline edits (Cmd+K) count as human. Cursor also runs the hooks of
   Claude Code plugins; those of the agit plugin then do nothing, so
   Cursor's work is recorded once, by the Cursor hooks.
-- The summary before a commit comes from the session transcript, whose
-  format only Claude Code documents.
 - Gemini CLI does not tell the hooks its model.
 - Codex runs a hook only once you have trusted it: after
   `agit-setup add codex`, start `codex`, run `/hooks`, and trust the
   agit hooks. Codex asks again only if they change; upgrades of
   agit-setup keep them as they are.
 
-Options, asked by `agit-setup` and kept in `~/.agit/setup.conf`:
+One option, asked by `agit-setup` and kept in `~/.agit/setup.conf`:
 
 ```
 --no-shell        do not stamp around shell commands (default: stamp)
---no-reason       do not record a summary before commits (default: record)
 ```
 
-The hooks never block the agent: they do nothing outside a Git
-worktree, where `provenance.enabled` is false, or when they find no
-agit, and they log their errors to `~/.agit/log/hook.log`. They run
+The hooks never block the agent, nor its commits: they do nothing
+outside a Git worktree, where `provenance.enabled` is false, or when
+they find no agit, and they log their errors to `~/.agit/log/hook.log`. They run
 the agit installed in `~/.agit` even when the agent was started from a
 shell that does not have it on `PATH`. The commits that an agent makes
 must be made by agit too: Claude Code's hooks put agit first on the
@@ -182,8 +181,8 @@ the plugin from Claude Code itself:
 ```
 
 or from the shell with `claude plugin marketplace add mronus/agit-setup`
-and `claude plugin install agit@agit-setup`. The options then keep
-their defaults.
+and `claude plugin install agit@agit-setup`. The option then keeps
+its default.
 
 ## License
 

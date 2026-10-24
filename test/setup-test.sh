@@ -116,7 +116,7 @@ run 0 add claude-code --yes
 called "$tmp/project" "plugin marketplace add $root"
 called "$tmp/project" "plugin install agit@agit-setup --scope user -y"
 test "$(git config --file "$conf" hook.shell)" = true || fail "hook.shell"
-test "$(git config --file "$conf" hook.reason)" = true || fail "hook.reason"
+git config --file "$conf" hook.reason && fail "hook.reason written"
 git config --file "$conf" hook.transcript && fail "hook.transcript written"
 test "$(git config --file "$conf" --get-all agent.claude-code.install)" = user ||
 fail "the user install was not recorded"
@@ -131,9 +131,11 @@ ok "add is idempotent"
 
 echo "== add claude-code with options, project scope"
 : >"$calls"
-# hook.transcript, from an earlier version, is left alone.
+# hook.transcript and hook.reason, from earlier versions, are left
+# alone.
 git config --file "$conf" hook.transcript true
-run 0 add claude-code --scope project --no-shell --no-reason -y
+git config --file "$conf" hook.reason false
+run 0 add claude-code --scope project --no-shell -y
 called "$tmp/project" "plugin install agit@agit-setup --scope project -y"
 test "$(git config --file "$conf" hook.shell)" = false || fail "hook.shell"
 test "$(git config --file "$conf" hook.reason)" = false || fail "hook.reason"
@@ -152,13 +154,14 @@ run 0 status
 for want in "Claude Code:  $tmp/bin/claude (9.9.9 (Claude Code))" \
 	"agit@agit-setup 0.1.0, user scope, enabled" \
 	"installed by agit-setup: project:$tmp/project" \
-	"summary before commits: no" "an error" "agit-setup:   $root (plugin " \
+	"edits made by shell commands: no" "an error" "agit-setup:   $root (plugin " \
 	"hooks run:    $tmp/bin/git" \
 	"warning: the hooks found no agit in some sessions"
 do
 	grep -qF "$want" "$tmp/out" || fail "status does not show: $want"
 done
 grep -q transcripts "$tmp/out" && fail "status shows transcripts"
+grep -q "summary before commits" "$tmp/out" && fail "status shows summary before commits"
 ok "status"
 
 echo "== remove claude-code"
@@ -491,6 +494,8 @@ echo "== errors"
 run 1 add
 run 1 add claude-code --transcripts --yes
 grep -q "unknown option: --transcripts" "$tmp/out" || fail "--transcripts accepted"
+run 1 add claude-code --no-reason --yes
+grep -q "unknown option: --no-reason" "$tmp/out" || fail "--no-reason accepted"
 run 1 add claude-code --scope everywhere --yes
 run 1 add codex --scope project --yes
 grep -q "Codex supports --scope user" "$tmp/out" || fail "no message for codex --scope project"

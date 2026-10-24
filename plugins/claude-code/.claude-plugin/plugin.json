@@ -1,7 +1,7 @@
 {
   "name": "agit",
   "description": "Record the lines Claude Code writes, and why, in the provenance of agit commits",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "M. Abdullah Onus"
   },
