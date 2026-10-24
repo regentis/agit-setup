@@ -1,0 +1,10 @@
+version 1
+commit cbb0fec8b607e4ea02fb3dcd39fe4479d6c25a26
+capture observed git/2.56.0.agit.2
+actor human human ident=M. Abdullah Onus <mronus@gmail.com>
+file bin/agit-hook
++ 348-355 HUMAN human b11f8506637dc99591e84af95cf24af9c48b8638
+- 348-356 HUMAN human 234059b65312c2f714ce0ca7732607357947cf36
+file test/hook-test.sh
++ 159-160 HUMAN human ffed1675ebb201e05259ce8f3436340c312ca891
+- 159 HUMAN human baf833a0e75b76438814598535bac63a3f0669eb
