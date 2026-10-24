@@ -123,7 +123,10 @@ The hooks run `bin/agit-hook`, which:
 before and after each file edit    git stamp begin / end -- <file>
 before and after each shell        git stamp begin / end on the whole tree,
 command                            so files written by commands count as
-                                   the agent's
+                                   the agent's; the tree is the one the
+                                   command works in: that of a leading
+                                   cd <dir> or of git -C <dir>, else that
+                                   of the agent's directory
 at the start of a session          tell the agent to record why it made
                                    its changes, with git stamp reason,
                                    before each commit
