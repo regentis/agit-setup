@@ -1,0 +1,5 @@
+version 1
+commit 7891b41ea9443a2e6c2f666f687c23982b4b4e55
+session dcec3081-94b4-49c4-a6c2-f93e14060337 model=claude-opus-5-5 tool=claude-code started=1792876758 ended=1792876760
+
+shellcheck in CI flagged the quoted '~/' case pattern (SC2088) in the new shell_dir. Escaping the tilde instead of quoting it keeps the same match and satisfies shellcheck, so the CI job passes again.
